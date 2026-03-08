@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import GameWorld, { GameWorldHandle } from "./GameWorld";
 
+// Custom hook for responsive design
+function useWindowSize() {
+  const [width, setWidth] = useState(window.innerWidth);
+  
+  useEffect(() => {
+    const handleResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  return { 
+    width, 
+    isMobile: width < 768, 
+    isTablet: width >= 768 && width < 1024,
+    isDesktop: width >= 1024
+  };
+}
+
 interface ApiCall {
   timestamp: string;
   instructions: string;
@@ -98,6 +116,7 @@ function renderOutputItem(item: Record<string, unknown>, phase: Phase): Msg | nu
 }
 
 export default function App() {
+  const { isMobile, isTablet } = useWindowSize();
   const [calls, setCalls] = useState<ApiCall[]>([]);
   const [position, setPosition] = useState({ x: 5, y: 5 });
   const [crabState, setCrabState] = useState("idle");
@@ -451,10 +470,10 @@ export default function App() {
         <img src="/icon.png" alt="HermitClaw" style={headerIcon} />
         <span style={headerTitle}>HermitClaw</span>
       </div>
-      <div style={twoPane}>
+      <div style={getTwoPaneStyles(isMobile)}>
         {/* Left pane — Game world */}
         <div 
-          style={gamePane}
+          style={getGamePaneStyles(isMobile)}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -479,7 +498,7 @@ export default function App() {
         </div>
 
         {/* Right pane — Chat feed */}
-        <div style={chatPane}>
+        <div style={getChatPaneStyles(isMobile)}>
           {/* Crab switcher */}
           {crabs.length > 1 && (
             <div style={switcherBar}>
@@ -578,7 +597,7 @@ export default function App() {
               New messages
             </div>
           )}
-          <div style={inputBar}>
+          <div style={getInputBarStyles(isMobile)}>
             {conversing && countdown > 0 && (
               <div style={countdownStyle}>{countdown}s</div>
             )}
@@ -594,13 +613,13 @@ export default function App() {
               onSubmit={(e) => { e.preventDefault(); sendMessage(); }}
             >
               <input
-                style={inputField}
+                style={getInputFieldStyles(isMobile)}
                 type="text"
                 placeholder={conversing ? `Reply to ${crabName}...` : `Say something to ${crabName}...`}
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
               />
-              <button style={sendBtn} type="submit">Send</button>
+              <button style={getSendBtnStyles(isMobile)} type="submit">Send</button>
             </form>
           </div>
         </div>
@@ -652,22 +671,24 @@ const headerTitle: React.CSSProperties = {
 };
 
 // ── Layout ──
-const twoPane: React.CSSProperties = {
+const getTwoPaneStyles = (isMobile: boolean): React.CSSProperties => ({
   display: "flex",
   flex: 1,
   overflow: "hidden",
-};
+  flexDirection: isMobile ? "column" as const : "row" as const,
+});
 
-const gamePane: React.CSSProperties = {
-  width: "45%",
+const getGamePaneStyles = (isMobile: boolean): React.CSSProperties => ({
+  width: isMobile ? "100%" : "45%",
+  height: isMobile ? "40%" : "100%",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   background: DARK_MID,
-  padding: 20,
+  padding: isMobile ? 10 : 20,
   flexShrink: 0,
   position: "relative",
-};
+});
 
 const dropZoneOverlay: React.CSSProperties = {
   position: "absolute",
@@ -699,14 +720,49 @@ const dropZoneText: React.CSSProperties = {
   color: "#4a9eff",
 };
 
-const chatPane: React.CSSProperties = {
-  width: "55%",
-  height: "100%",
+const getChatPaneStyles = (isMobile: boolean): React.CSSProperties => ({
+  width: isMobile ? "100%" : "55%",
+  height: isMobile ? "60%" : "100%",
   display: "flex",
   flexDirection: "column",
   background: SURFACE,
-  borderLeft: `1px solid ${BORDER}`,
-};
+  borderLeft: isMobile ? "none" : `1px solid ${BORDER}`,
+  borderTop: isMobile ? `1px solid ${BORDER}` : "none",
+});
+
+const getInputFieldStyles = (isMobile: boolean): React.CSSProperties => ({
+  flex: 1,
+  padding: isMobile ? "14px 16px" : "10px 16px",
+  borderRadius: 10,
+  border: `1px solid ${BORDER}`,
+  fontSize: isMobile ? 16 : 13,
+  fontFamily: MONO,
+  outline: "none",
+  background: SURFACE,
+  color: "#333",
+});
+
+const getSendBtnStyles = (isMobile: boolean): React.CSSProperties => ({
+  padding: isMobile ? "14px 24px" : "10px 20px",
+  borderRadius: 10,
+  border: "none",
+  background: DARK_MID,
+  color: "#fff",
+  fontSize: isMobile ? 16 : 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  letterSpacing: "0.2px",
+  minHeight: isMobile ? 44 : "auto",
+});
+
+const getInputBarStyles = (isMobile: boolean): React.CSSProperties => ({
+  borderTop: `1px solid ${BORDER}`,
+  padding: isMobile ? "16px 20px" : "12px 20px",
+  background: "#fff",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+});
 
 const chatScroll: React.CSSProperties = {
   flex: 1,
@@ -926,43 +982,10 @@ const planSystemText: React.CSSProperties = {
 };
 
 // ── Input bar ──
-const inputBar: React.CSSProperties = {
-  borderTop: `1px solid ${BORDER}`,
-  padding: "12px 20px",
-  background: "#fff",
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-};
-
 const inputForm: React.CSSProperties = {
   display: "flex",
   flex: 1,
   gap: 10,
-};
-
-const inputField: React.CSSProperties = {
-  flex: 1,
-  padding: "10px 16px",
-  borderRadius: 10,
-  border: `1px solid ${BORDER}`,
-  fontSize: 13,
-  fontFamily: MONO,
-  outline: "none",
-  background: SURFACE,
-  color: "#333",
-};
-
-const sendBtn: React.CSSProperties = {
-  padding: "10px 20px",
-  borderRadius: 10,
-  border: "none",
-  background: DARK_MID,
-  color: "#fff",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-  letterSpacing: "0.2px",
 };
 
 const countdownStyle: React.CSSProperties = {
