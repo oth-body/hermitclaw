@@ -1009,6 +1009,13 @@ class Brain:
         # Heavy init — runs in background thread so the event loop stays free
         await asyncio.to_thread(ensure_venv, self.env_path)
         self.stream = await asyncio.to_thread(MemoryStream, self.env_path)
+        
+        # Prune memory stream on startup if configured
+        if config.get("memory_prune_on_startup", False):
+            removed = self.stream.prune()
+            if removed > 0:
+                logger.info(f"Pruned {removed} old memories on startup")
+        
         # Mark subdirectory files as "seen" but leave root-level user files
         # (PDFs, images, etc.) as unseen so they trigger inbox alerts on first cycle
         all_files = self._scan_env_files()
@@ -1035,6 +1042,12 @@ class Brain:
             self._cycles_since_plan += 1
             if self._cycles_since_plan >= Brain.PLAN_INTERVAL:
                 await self._plan()
+                
+                # Also prune memories periodically (every planning cycle)
+                if config.get("memory_max_entries") or config.get("memory_max_age_days"):
+                    removed = self.stream.prune()
+                    if removed > 0:
+                        logger.info(f"Pruned {removed} memories during planning cycle")
 
             self.state = "idle"
             await self._broadcast(

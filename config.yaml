@@ -28,5 +28,11 @@ recency_decay_rate: 0.995      # exponential decay rate for recency scoring
 #   custom_url: null                         # for custom provider
 #   custom_headers: {}                       # extra headers for custom provider
 
+# Memory retention policy (optional)
+# memory_max_entries: 1000     # keep max N memories
+# memory_max_age_days: 30      # delete memories older than N days
+# memory_min_importance: 3     # delete memories below importance threshold
+# memory_prune_on_startup: true # run cleanup on startup
+
 # environment_path is auto-detected from *_box/ directories
 # Uncomment to override: environment_path: "./mybox"

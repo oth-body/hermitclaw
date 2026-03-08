@@ -160,6 +160,67 @@ class MemoryStream:
             return filtered[-n:]
         return self.memories[-n:]
 
+    def prune(self, max_entries: int = None, max_age_days: int = None, min_importance: int = None) -> int:
+        """Remove old/low-importance memories. Returns number of memories removed.
+        
+        Args:
+            max_entries: Keep only the most recent N memories (default: from config or 1000)
+            max_age_days: Remove memories older than N days (default: from config or 30)
+            min_importance: Remove memories below importance threshold (default: from config or 3)
+        
+        Returns:
+            Number of memories removed
+        """
+        max_entries = max_entries or config.get("memory_max_entries", 1000)
+        max_age_days = max_age_days or config.get("memory_max_age_days", 30)
+        min_importance = min_importance or config.get("memory_min_importance", 3)
+        
+        if not self.memories:
+            return 0
+        
+        original_count = len(self.memories)
+        now = datetime.now()
+        cutoff_time = now.timestamp() - (max_age_days * 24 * 3600)
+        
+        # Keep memories that meet at least one criteria:
+        # - Important enough (importance >= min_importance)
+        # - Recent enough (within max_age_days)
+        # - Reflections (kind == "reflection") - always keep
+        kept = []
+        for mem in self.memories:
+            try:
+                mem_time = datetime.fromisoformat(mem["timestamp"]).timestamp()
+                is_recent = mem_time >= cutoff_time
+                is_important = mem.get("importance", 5) >= min_importance
+                is_reflection = mem.get("kind") == "reflection"
+                
+                if is_reflection or is_recent or is_important:
+                    kept.append(mem)
+            except Exception:
+                # Keep memories with invalid timestamps
+                kept.append(mem)
+        
+        # If still too many, keep only the most recent max_entries
+        if len(kept) > max_entries:
+            # Sort by timestamp and keep most recent
+            kept.sort(key=lambda m: m.get("timestamp", ""), reverse=True)
+            kept = kept[:max_entries]
+        
+        removed = original_count - len(kept)
+        
+        if removed > 0:
+            self.memories = kept
+            # Rewrite the JSONL file
+            try:
+                with open(self.path, "w") as f:
+                    for mem in self.memories:
+                        f.write(json.dumps(mem) + "\n")
+                logger.info(f"Pruned {removed} memories from stream ({original_count} -> {len(kept)})")
+            except Exception as e:
+                logger.error(f"Failed to rewrite memory stream after pruning: {e}")
+        
+        return removed
+
     def _score_importance(self, content: str) -> int:
         """Ask the LLM to rate importance 1-10."""
         try:
