@@ -16,7 +16,7 @@ from hermitclaw.prompts import (
     PLANNING_PROMPT,
     FOCUS_NUDGE,
 )
-from hermitclaw.providers import chat, chat_short
+from hermitclaw.providers import chat, chat_short, stream_chat
 from hermitclaw.tools import execute_tool, ensure_venv
 
 logger = logging.getLogger("hermitclaw.brain")
@@ -676,6 +676,20 @@ class Brain:
 
         try:
             max_tokens = config.get("max_output_tokens", 1000)
+            
+            # Optional streaming for text display (tool calls still need non-streaming)
+            if config.get("enable_streaming", False):
+                # Stream text chunks for display
+                for chunk in await asyncio.to_thread(
+                    lambda: list(stream_chat(input_list, True, instructions, max_tokens))
+                ):
+                    if chunk.get("text"):
+                        await self._broadcast({
+                            "event": "stream_token",
+                            "data": {"text": chunk["text"]}
+                        })
+            
+            # Make actual call (needed for tool calls)
             response = await asyncio.to_thread(
                 chat, input_list, True, instructions, max_tokens
             )
