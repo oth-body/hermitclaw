@@ -63,6 +63,22 @@ def _discover_crabs() -> dict[str, Brain]:
 
 
 if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="HermitClaw - AI creature that lives in a folder")
+    parser.add_argument("--setup", action="store_true", help="Run model selection launcher")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run server on")
+    args = parser.parse_args()
+    
+    # Run setup launcher if requested or if config doesn't exist
+    config_path = os.path.join(PROJECT_ROOT, "config.yaml")
+    if args.setup or not os.path.exists(config_path):
+        from hermitclaw.launcher import main as run_launcher
+        run_launcher()
+        # Reload config after launcher
+        from hermitclaw.config import reload_config
+        reload_config()
+    
     # Discover existing crabs
     brains = _discover_crabs()
 
@@ -93,11 +109,11 @@ if __name__ == "__main__":
 
     names = [b.identity["name"] for b in brains.values()]
     print(f"\n  Starting {len(brains)} crab(s): {', '.join(names)}")
-    print(f"  Open http://localhost:8000 to watch them think\n")
+    print(f"  Open http://localhost:{args.port} to watch them think\n")
     print(f"  Press Ctrl+C to stop gracefully\n")
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=args.port,
         log_level="info",
     )
