@@ -380,6 +380,25 @@ model: "google/gemini-2.0-flash-001"
 # export OPENROUTER_API_KEY=your-key
 ```
 
+**Web Search Providers:**
+
+HermitClaw supports multiple web search backends:
+
+```yaml
+web_search:
+  provider: "ollama"           # "ollama" | "searxng" | "brave" | "custom"
+  
+  # SearXNG (self-hosted)
+  searxng_url: "http://localhost:8080"
+  
+  # Brave Search API
+  brave_api_key: null          # or set BRAVE_API_KEY env var
+  
+  # Custom endpoint
+  custom_url: null
+  custom_headers: {}           # extra headers for custom provider
+```
+
 Set your API key via environment variable for OpenAI: `export OPENAI_API_KEY="sk-..."`. Or set `api_key` directly in `config.yaml`.
 
 ---

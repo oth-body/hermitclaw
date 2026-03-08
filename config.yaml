@@ -14,5 +14,13 @@ memory_retrieval_count: 3      # how many memories to retrieve per query
 embedding_model: "text-embedding-3-small"  # for Ollama use: nomic-embed-text
 recency_decay_rate: 0.995      # exponential decay rate for recency scoring
 
+# Web search provider (optional)
+# web_search:
+#   provider: "ollama"          # "ollama" | "searxng" | "brave" | "custom"
+#   searxng_url: "http://localhost:8080"    # for searxng provider
+#   brave_api_key: null                      # for brave provider
+#   custom_url: null                         # for custom provider
+#   custom_headers: {}                       # extra headers for custom provider
+
 # environment_path is auto-detected from *_box/ directories
 # Uncomment to override: environment_path: "./mybox"

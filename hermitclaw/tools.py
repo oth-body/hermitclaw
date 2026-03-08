@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from urllib.error import URLError
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ logger = logging.getLogger("hermitclaw.tools")
 
 OLLAMA_WEB_SEARCH_URL = "https://ollama.com/api/web_search"
 OLLAMA_WEB_FETCH_URL = "https://ollama.com/api/web_fetch"
+BRAVE_WEB_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
 # Commands that should never be run (checked as prefixes after stripping)
 BLOCKED_PREFIXES = [
@@ -268,11 +270,11 @@ def run_command(command: str, env_root: str) -> str:
         return f"Error: {e}"
 
 
-def ollama_web_search(query: str, max_results: int = 5) -> str:
+def _web_search_ollama(query: str, max_results: int) -> str:
     """Call Ollama cloud web search API. Requires OLLAMA_API_KEY."""
     api_key = config.get("ollama_api_key")
     if not api_key:
-        return "Error: OLLAMA_API_KEY is required for web search. Get one at https://ollama.com/settings/keys"
+        return "Error: OLLAMA_API_KEY is required for Ollama web search. Get one at https://ollama.com/settings/keys"
     try:
         data = json.dumps(
             {"query": query, "max_results": min(max_results, 10)}
@@ -301,11 +303,109 @@ def ollama_web_search(query: str, max_results: int = 5) -> str:
         return f"Error: {e}"
 
 
+def _web_search_searxng(query: str, max_results: int) -> str:
+    """Call SearXNG instance for web search."""
+    searxng_url = config.get("web_search_searxng_url")
+    if not searxng_url:
+        return "Error: SEARXNG_URL is required for SearXNG web search. Set it in config.yaml under web_search.searxng_url"
+    try:
+        url = f"{searxng_url.rstrip('/')}/search?q={urllib.parse.quote(query)}&format=json"
+        req = urllib.request.Request(url, headers={"User-Agent": "HermitClaw/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            out = json.loads(resp.read().decode())
+        lines = []
+        for r in out.get("results", [])[:max_results]:
+            lines.append(f"**{r.get('title', '')}**")
+            lines.append(f"URL: {r.get('url', '')}")
+            lines.append(r.get("content", "")[:2000])
+            lines.append("")
+        return "\n".join(lines).strip()[:8000] or "No results found."
+    except URLError as e:
+        return f"Error: {e.reason}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def _web_search_brave(query: str, max_results: int) -> str:
+    """Call Brave Search API."""
+    api_key = config.get("web_search_brave_api_key")
+    if not api_key:
+        return "Error: BRAVE_API_KEY is required for Brave web search. Get one at https://brave.com/search/api/"
+    try:
+        url = f"{BRAVE_WEB_SEARCH_URL}?q={urllib.parse.quote(query)}&count={min(max_results, 20)}"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "X-Subscription-Token": api_key,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            out = json.loads(resp.read().decode())
+        lines = []
+        for r in out.get("web", {}).get("results", [])[:max_results]:
+            lines.append(f"**{r.get('title', '')}**")
+            lines.append(f"URL: {r.get('url', '')}")
+            lines.append(r.get("description", "")[:2000])
+            lines.append("")
+        return "\n".join(lines).strip()[:8000] or "No results found."
+    except URLError as e:
+        return f"Error: {e.reason}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def _web_search_custom(query: str, max_results: int) -> str:
+    """Call custom web search endpoint."""
+    custom_url = config.get("web_search_custom_url")
+    if not custom_url:
+        return "Error: Custom web search URL not configured. Set web_search.custom_url in config.yaml"
+    try:
+        data = json.dumps({"query": query, "max_results": max_results}).encode()
+        headers = {"Content-Type": "application/json"}
+        headers.update(config.get("web_search_custom_headers", {}))
+        req = urllib.request.Request(custom_url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            out = json.loads(resp.read().decode())
+        # Try to handle common response formats
+        results = out.get("results", out.get("web", {}).get("results", []))
+        lines = []
+        for r in results[:max_results]:
+            title = r.get("title", r.get("name", ""))
+            url = r.get("url", r.get("link", r.get("href", "")))
+            content = r.get("content", r.get("description", r.get("snippet", "")))
+            lines.append(f"**{title}**")
+            lines.append(f"URL: {url}")
+            lines.append(content[:2000])
+            lines.append("")
+        return "\n".join(lines).strip()[:8000] or "No results found."
+    except URLError as e:
+        return f"Error: {e.reason}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def web_search(query: str, max_results: int = 5) -> str:
+    """Perform web search using configured provider."""
+    provider = config.get("web_search_provider", "ollama")
+    
+    if provider == "ollama":
+        return _web_search_ollama(query, max_results)
+    elif provider == "searxng":
+        return _web_search_searxng(query, max_results)
+    elif provider == "brave":
+        return _web_search_brave(query, max_results)
+    elif provider == "custom":
+        return _web_search_custom(query, max_results)
+    else:
+        return f"Error: Unknown web search provider: {provider}"
+
+
 def ollama_web_fetch(url: str) -> str:
     """Call Ollama cloud web fetch API. Requires OLLAMA_API_KEY."""
     api_key = config.get("ollama_api_key")
     if not api_key:
-        return "Error: OLLAMA_API_KEY is required for web fetch. Get one at https://ollama.com/settings/keys"
+        return "Error: OLLAMA_API_KEY is required for Ollama web fetch. Get one at https://ollama.com/settings/keys"
     try:
         data = json.dumps({"url": url}).encode()
         req = urllib.request.Request(
@@ -326,6 +426,17 @@ def ollama_web_fetch(url: str) -> str:
         return f"Error: {e.reason}"
     except Exception as e:
         return f"Error: {e}"
+
+
+def web_fetch(url: str) -> str:
+    """Fetch web page content. Falls back to built-in fetch_url for non-Ollama providers."""
+    provider = config.get("web_search_provider", "ollama")
+    
+    if provider == "ollama":
+        return ollama_web_fetch(url)
+    else:
+        # For other providers, use the built-in fetch_url
+        return fetch_url(url)
 
 
 def fetch_url(url: str, max_chars: int = 12000, timeout: int = 15) -> str:
@@ -361,11 +472,11 @@ def execute_tool(name: str, arguments: dict, env_root: str) -> str:
     elif name == "fetch_url":
         return fetch_url(arguments.get("url", ""))
     elif name == "web_search":
-        return ollama_web_search(
+        return web_search(
             arguments.get("query", ""),
             arguments.get("max_results", 5),
         )
     elif name == "web_fetch":
-        return ollama_web_fetch(arguments.get("url", ""))
+        return web_fetch(arguments.get("url", ""))
     else:
         return f"Unknown tool: {name}"
