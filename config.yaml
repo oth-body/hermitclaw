@@ -1,8 +1,8 @@
 # HermitClaw Configuration
-provider: "openai"              # "openai" | "openrouter" | "custom"
-model: "gpt-4.1"
+provider: "custom"
+model: "glm-5"
+base_url: "https://api.zai-ai.com/v1"
 api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
-base_url: null                  # auto-set for known providers; required for "custom"
 ollama_api_key: null            # for Ollama cloud web search (minimax:cloud etc.) — OLLAMA_API_KEY env
 
 thinking_pace_seconds: 5       # how often it thinks (steady pulse)
