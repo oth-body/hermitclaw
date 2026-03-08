@@ -53,6 +53,14 @@ def load_config() -> dict:
         "ollama_api_key"
     )
 
+    # Web search provider configuration
+    web_search_config = config.get("web_search", {})
+    config["web_search_provider"] = os.environ.get("HERMITCLAW_WEB_SEARCH_PROVIDER") or web_search_config.get("provider", "ollama")
+    config["web_search_searxng_url"] = os.environ.get("SEARXNG_URL") or web_search_config.get("searxng_url")
+    config["web_search_brave_api_key"] = os.environ.get("BRAVE_API_KEY") or web_search_config.get("brave_api_key")
+    config["web_search_custom_url"] = os.environ.get("HERMITCLAW_WEB_SEARCH_URL") or web_search_config.get("custom_url")
+    config["web_search_custom_headers"] = web_search_config.get("custom_headers", {})
+
     # Defaults for numeric settings
     config.setdefault("thinking_pace_seconds", 45)
     config.setdefault("max_thoughts_in_context", 20)
