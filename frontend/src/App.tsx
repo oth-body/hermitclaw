@@ -146,6 +146,11 @@ export default function App() {
       if (msg.event === "alert") setAlert(true);
       if (msg.event === "activity") setActivity(msg.data);
       if (msg.event === "focus_mode") setFocusMode(msg.data.enabled);
+      if (msg.event === "stream_token") {
+        // Handle streaming text tokens
+        // TODO: Append to current thinking bubble
+        console.log("Stream token:", msg.data.text);
+      }
       if (msg.event === "conversation") {
         if (msg.data.state === "waiting") {
           setConversing(true);
