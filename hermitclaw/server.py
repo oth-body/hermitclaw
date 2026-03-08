@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from hermitclaw.brain import Brain
 from hermitclaw.config import config
 from hermitclaw.identity import _derive_traits
+from hermitclaw.models import MessageRequest, CreateCrabRequest, FocusModeRequest, SnapshotRequest
 
 logger = logging.getLogger("hermitclaw.server")
 
@@ -162,14 +163,11 @@ async def get_crabs():
 
 
 @app.post("/api/crabs")
-async def create_crab(request: Request):
+async def create_crab(request: CreateCrabRequest):
     """Create a new crab at runtime."""
-    body = await request.json()
-    name = body.get("name", "").strip()
-    if not name:
-        return {"ok": False, "error": "name is required"}
-
-    crab_id = name.lower()
+    name = request.name.strip()
+    crab_id = name.lower().replace(" ", "_")
+    
     if crab_id in brains:
         return {"ok": False, "error": f"crab '{crab_id}' already exists"}
 
@@ -241,21 +239,18 @@ async def get_status(request: Request):
 
 
 @app.post("/api/focus-mode")
-async def post_focus_mode(request: Request):
+async def post_focus_mode(request: FocusModeRequest, req: Request):
     """Toggle focus mode on or off."""
-    brain = _get_brain(request)
-    body = await request.json()
-    enabled = bool(body.get("enabled", False))
-    await brain.set_focus_mode(enabled)
-    return {"ok": True, "focus_mode": enabled}
+    brain = _get_brain(req)
+    await brain.set_focus_mode(request.enabled)
+    return {"ok": True, "focus_mode": request.enabled}
 
 
 @app.post("/api/message")
-async def post_message(request: Request):
+async def post_message(request: MessageRequest, req: Request):
     """Receive a message from the user (voice from outside the room)."""
-    brain = _get_brain(request)
-    body = await request.json()
-    text = body.get("text", "").strip()
+    brain = _get_brain(req)
+    text = request.text.strip()
     if not text:
         return {"ok": False, "error": "empty message"}
     if brain._waiting_for_reply:
@@ -266,11 +261,10 @@ async def post_message(request: Request):
 
 
 @app.post("/api/snapshot")
-async def post_snapshot(request: Request):
+async def post_snapshot(request: SnapshotRequest, req: Request):
     """Receive a canvas snapshot from the frontend."""
-    brain = _get_brain(request)
-    body = await request.json()
-    brain.latest_snapshot = body.get("image")
+    brain = _get_brain(req)
+    brain.latest_snapshot = request.image
     return {"ok": True}
 
 
