@@ -7,9 +7,9 @@ import logging
 import os
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hermitclaw.brain import Brain
@@ -241,6 +241,60 @@ async def get_file(request: Request, path: str):
             return {"path": path, "content": f.read()}
     except Exception as e:
         return {"path": path, "content": f"Error: {e}"}
+
+
+@app.post("/api/files/upload")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    dest_path: str = Form(default=""),
+):
+    """Upload a file to the crab's box. Drops it in the root or specified subfolder."""
+    brain = _get_brain(request)
+    env_root = os.path.realpath(brain.env_path)
+    
+    # Sanitize destination path
+    dest_path = dest_path.strip("/")
+    if ".." in dest_path:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid path: '..' not allowed"},
+        )
+    
+    # Build full destination path
+    filename = os.path.basename(file.filename or "uploaded_file")
+    if dest_path:
+        full_dir = os.path.realpath(os.path.join(env_root, dest_path))
+    else:
+        full_dir = env_root
+    
+    # Ensure directory exists
+    os.makedirs(full_dir, exist_ok=True)
+    
+    # Final file path
+    full_path = os.path.join(full_dir, filename)
+    
+    # Security check: must be inside env_root
+    if not os.path.realpath(full_path).startswith(env_root):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid path: outside environment"},
+        )
+    
+    # Write the file
+    try:
+        content = await file.read()
+        with open(full_path, "wb") as f:
+            f.write(content)
+        rel_path = os.path.relpath(full_path, env_root)
+        logger.info(f"Uploaded file: {rel_path} ({len(content)} bytes)")
+        return {"success": True, "path": rel_path, "size": len(content)}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )
 
 
 # --- Static frontend ---

@@ -111,6 +111,8 @@ export default function App() {
   const [focusMode, setFocusMode] = useState(false);
   const [crabs, setCrabs] = useState<CrabInfo[]>([]);
   const [activeCrab, setActiveCrab] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameWorldHandle>(null);
@@ -327,6 +329,51 @@ export default function App() {
     }).catch(() => {});
   };
 
+  // File upload via drag-and-drop
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/files/upload${crabParam}`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.error("Upload failed:", data.error);
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      // Upload all dropped files
+      Array.from(files).forEach(uploadFile);
+    }
+  };
+
   // Build a deduplicated conversation stream.
   // Each API call's input contains the FULL accumulated history.
   // We only render NEW items in each call's input (items we haven't seen yet)
@@ -401,7 +448,28 @@ export default function App() {
       </div>
       <div style={twoPane}>
         {/* Left pane — Game world */}
-        <div style={gamePane}>
+        <div 
+          style={gamePane}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div style={dropZoneOverlay}>
+              <div style={dropZoneContent}>
+                <div style={dropZoneIcon}>📁</div>
+                <div style={dropZoneText}>Drop files here</div>
+              </div>
+            </div>
+          )}
+          {uploading && (
+            <div style={dropZoneOverlay}>
+              <div style={dropZoneContent}>
+                <div style={dropZoneIcon}>⏳</div>
+                <div style={dropZoneText}>Uploading...</div>
+              </div>
+            </div>
+          )}
           <GameWorld ref={gameRef} position={position} state={crabState} alert={alert} activity={activity} conversing={conversing} />
         </div>
 
@@ -593,6 +661,37 @@ const gamePane: React.CSSProperties = {
   background: DARK_MID,
   padding: 20,
   flexShrink: 0,
+  position: "relative",
+};
+
+const dropZoneOverlay: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  background: "rgba(15, 15, 26, 0.9)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 10,
+  border: "3px dashed #4a9eff",
+  borderRadius: 12,
+  margin: 20,
+};
+
+const dropZoneContent: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 12,
+};
+
+const dropZoneIcon: React.CSSProperties = {
+  fontSize: 48,
+};
+
+const dropZoneText: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#4a9eff",
 };
 
 const chatPane: React.CSSProperties = {
