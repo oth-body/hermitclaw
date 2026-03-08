@@ -87,6 +87,39 @@ async def websocket_default(ws: WebSocket):
 # --- REST API ---
 
 
+@app.get("/api/ping")
+async def ping():
+    """Simple liveness check."""
+    return {"pong": True}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check for monitoring systems."""
+    import time
+    from hermitclaw.config import config as cfg
+    
+    crab_status = [
+        {
+            "id": crab_id,
+            "name": brain.identity["name"],
+            "state": brain.state,
+            "thought_count": brain.thought_count,
+            "running": brain.running,
+        }
+        for crab_id, brain in brains.items()
+    ]
+    
+    return {
+        "status": "healthy",
+        "crabs": crab_status,
+        "config": {
+            "provider": cfg.get("provider"),
+            "model": cfg.get("model"),
+        },
+    }
+
+
 @app.get("/api/crabs")
 async def get_crabs():
     """List all running crabs."""
