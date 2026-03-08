@@ -9,6 +9,7 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
 PROVIDER_PRESETS = {
     "openai": None,  # uses OpenAI default
     "openrouter": "https://openrouter.ai/api/v1",
+    "bedrock": None,  # uses AWS SDK
 }
 
 # Provider-specific API key env vars (checked before OPENAI_API_KEY fallback)

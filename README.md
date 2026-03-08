@@ -380,6 +380,15 @@ model: "google/gemini-2.0-flash-001"
 # export OPENROUTER_API_KEY=your-key
 ```
 
+**Using AWS Bedrock:**
+```yaml
+provider: "bedrock"
+model: "anthropic.claude-3-sonnet-20240229-v1:0"
+# aws_region: "us-east-1"  # optional, defaults to us-east-1
+```
+Requires boto3: `pip install hermitclaw[bedrock]`
+Uses AWS SDK credential chain (env vars, ~/.aws/credentials, IAM role)
+
 **Web Search Providers:**
 
 HermitClaw supports multiple web search backends:
