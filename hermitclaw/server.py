@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import signal
 import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -20,6 +21,32 @@ logger = logging.getLogger("hermitclaw.server")
 
 app = FastAPI(title="HermitClaw")
 brains: dict[str, Brain] = {}  # crab_id -> Brain
+_shutdown_event: asyncio.Event | None = None
+
+
+def _handle_shutdown_signal(signum, frame):
+    """Handle SIGTERM/SIGINT for graceful shutdown."""
+    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    
+    # Stop all brains
+    for crab_id, brain in brains.items():
+        logger.info(f"Stopping {brain.identity['name']} ({crab_id})...")
+        brain.stop()
+    
+    # Set shutdown event if available
+    if _shutdown_event:
+        _shutdown_event.set()
+
+
+def register_shutdown_handlers(event: asyncio.Event = None):
+    """Register signal handlers for graceful shutdown."""
+    global _shutdown_event
+    if event:
+        _shutdown_event = event
+    
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    logger.info("Registered shutdown signal handlers (SIGTERM, SIGINT)")
 
 
 def create_app(all_brains: dict[str, Brain]) -> FastAPI:

@@ -86,10 +86,15 @@ if __name__ == "__main__":
 
     # Initialize the app with all brains
     app = create_app(brains)
+    
+    # Register shutdown handlers
+    from hermitclaw.server import register_shutdown_handlers
+    register_shutdown_handlers()
 
     names = [b.identity["name"] for b in brains.values()]
     print(f"\n  Starting {len(brains)} crab(s): {', '.join(names)}")
     print(f"  Open http://localhost:8000 to watch them think\n")
+    print(f"  Press Ctrl+C to stop gracefully\n")
     uvicorn.run(
         app,
         host="0.0.0.0",
