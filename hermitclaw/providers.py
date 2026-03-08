@@ -294,6 +294,20 @@ def _normalize_completions_response(response) -> dict:
     return {"text": text, "tool_calls": tool_calls, "output": output}
 
 
+def stream_chat(input_list: list, tools: bool = True, instructions: str = None, max_tokens: int = 300):
+    """Stream LLM responses token-by-token. Generator function that yields text chunks.
+    
+    Yields:
+        dict: {"text": str, "done": bool, "tool_calls": list}
+    
+    For tool_calls, calls generator until done=True.
+    """
+    if _uses_responses_api():
+        yield from _stream_chat_responses(input_list, tools, instructions, max_tokens)
+    else:
+        yield from _stream_chat_completions(input_list, tools, instructions, max_tokens)
+
+
 def _client() -> openai.OpenAI:
     return openai.OpenAI(api_key=config["api_key"])
 
@@ -371,6 +385,91 @@ def _chat_responses(
         "tool_calls": tool_calls,
         "output": response.output,
     }
+
+
+async def _stream_chat_responses(
+    input_list: list,
+    tools: bool = True,
+    instructions: str = None,
+    max_tokens: int = 300,
+):
+    """Stream Responses API calls. Yields text chunks as they arrive."""
+    kwargs = {
+        "model": config["model"],
+        "input": input_list,
+        "max_output_tokens": max_tokens,
+        "stream": True,
+    }
+    if instructions:
+        kwargs["instructions"] = instructions
+    if tools:
+        kwargs["tools"] = TOOLS
+
+    try:
+        stream = _client().responses.create(**kwargs)
+        async for event in stream:
+            if event.type == "response.output_text.delta":
+                yield {"text": event.delta}
+            elif event.type == "response.output_text.done":
+                yield {"done": True}
+    except Exception as e:
+        logger.exception("stream_chat_responses failed: %s", e)
+        yield {"text": f"Error: {e}", "done": True}
+
+
+def _stream_chat_completions(
+    input_list: list,
+    tools: bool = True,
+    instructions: str = None,
+    max_tokens: int = 300,
+):
+    """Stream Chat Completions API calls. Yields text chunks as they arrive."""
+    messages = _translate_input_to_messages(input_list, instructions)
+
+    kwargs = {
+        "model": config["model"],
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    if tools:
+        completions_tools = _translate_tools_for_completions(TOOLS)
+        if config.get("ollama_api_key") and config["provider"] == "custom":
+            ollama_tools = _translate_tools_for_completions(OLLAMA_WEB_TOOLS)
+            completions_tools = completions_tools + ollama_tools
+        if completions_tools:
+            kwargs["tools"] = completions_tools
+
+    summary = _summarize_messages_for_log(messages)
+    logger.info(
+        "stream_chat_completions request: model=%s provider=%s msg_count=%d summary=%s",
+        config["model"],
+        config["provider"],
+        len(messages),
+        json.dumps(summary, default=str),
+    )
+    try:
+        stream = _completions_client().chat.completions.create(**kwargs)
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield {"text": chunk.choices[0].delta.content}
+    except Exception as e:
+        body = ""
+        for attr in ("response", "http_response", "body"):
+            val = getattr(e, attr, None)
+            if val is not None:
+                if hasattr(val, "text"):
+                    body = (val.text or "")[:500]
+                    break
+                if isinstance(val, str):
+                    body = val[:500]
+                    break
+        logger.exception(
+            "stream_chat_completions failed: %s | response_body=%s",
+            e,
+            body or "(none)",
+        )
+        yield {"text": f"Error: {e}", "done": True}
 
 
 def _summarize_messages_for_log(messages: list) -> list:
