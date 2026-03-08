@@ -1,9 +1,15 @@
 # HermitClaw Configuration
-provider: "openai"              # "openai" | "openrouter" | "custom"
+provider: "openai"              # "openai" | "openrouter" | "bedrock" | "custom"
 model: "gpt-4.1"
 api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
 base_url: null                  # auto-set for known providers; required for "custom"
-ollama_api_key: null            # for Ollama cloud web search (minimax:cloud etc.) — OLLAMA_API_KEY env
+
+# Bedrock configuration (optional, for bedrock provider)
+# aws_region: "us-east-1"       # AWS region (default: us-east-1)
+# Uses AWS SDK credential chain:
+#   - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
+#   - ~/.aws/credentials file
+#   - IAM role if running on EC2
 
 thinking_pace_seconds: 5       # how often it thinks (steady pulse)
 max_thoughts_in_context: 4     # rolling window of recent thoughts

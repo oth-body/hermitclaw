@@ -563,9 +563,39 @@ def chat(
         "output": list,   # raw output (for appending back to input on follow-up calls)
     }
     """
-    if _uses_responses_api():
+    provider = config.get("provider", "openai")
+    
+    if provider == "bedrock":
+        return _chat_bedrock(input_list, tools, instructions, max_tokens)
+    elif _uses_responses_api():
         return _chat_responses(input_list, tools, instructions, max_tokens)
     return _chat_completions(input_list, tools, instructions, max_tokens)
+
+
+def _chat_bedrock(
+    input_list: list,
+    tools: bool = True,
+    instructions: str = None,
+    max_tokens: int = 300,
+) -> dict:
+    """Make a Bedrock API call. Same return format as _chat_completions."""
+    from hermitclaw.bedrock import bedrock_chat
+    from hermitclaw.config import config as cfg
+    
+    messages = _translate_input_to_messages(input_list, instructions)
+    model = cfg.get("model", "anthropic.claude-3-sonnet-20240229-v1:0")
+    
+    bedrock_tools = None
+    if tools:
+        bedrock_tools = _translate_tools_for_completions(TOOLS)
+    
+    logger.info(
+        "bedrock_chat request: model=%s msg_count=%d",
+        model,
+        len(messages),
+    )
+    
+    return bedrock_chat(messages, model, max_tokens, bedrock_tools)
 
 
 def embed(text: str) -> list[float]:
@@ -577,6 +607,13 @@ def embed(text: str) -> list[float]:
     from hermitclaw.config import config as cfg
 
     model = cfg.get("embedding_model", "text-embedding-3-small")
+    provider = cfg.get("provider", "openai")
+
+    # Use Bedrock embeddings for bedrock provider
+    if provider == "bedrock":
+        from hermitclaw.bedrock import bedrock_embed
+        embed_model = cfg.get("embedding_model", "amazon.titan-embed-text-v2:0")
+        return bedrock_embed(text, embed_model)
 
     # Try configured provider first
     try:
