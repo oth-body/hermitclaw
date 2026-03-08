@@ -8,10 +8,13 @@ import os
 import signal
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from hermitclaw.brain import Brain
 from hermitclaw.config import config
@@ -20,7 +23,13 @@ from hermitclaw.models import MessageRequest, CreateCrabRequest, FocusModeReques
 
 logger = logging.getLogger("hermitclaw.server")
 
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="HermitClaw")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 brains: dict[str, Brain] = {}  # crab_id -> Brain
 _shutdown_event: asyncio.Event | None = None
 
@@ -163,6 +172,7 @@ async def get_crabs():
 
 
 @app.post("/api/crabs")
+@limiter.limit("5/minute")
 async def create_crab(request: CreateCrabRequest):
     """Create a new crab at runtime."""
     name = request.name.strip()
@@ -239,6 +249,7 @@ async def get_status(request: Request):
 
 
 @app.post("/api/focus-mode")
+@limiter.limit("20/minute")
 async def post_focus_mode(request: FocusModeRequest, req: Request):
     """Toggle focus mode on or off."""
     brain = _get_brain(req)
@@ -247,6 +258,7 @@ async def post_focus_mode(request: FocusModeRequest, req: Request):
 
 
 @app.post("/api/message")
+@limiter.limit("30/minute")
 async def post_message(request: MessageRequest, req: Request):
     """Receive a message from the user (voice from outside the room)."""
     brain = _get_brain(req)
@@ -261,6 +273,7 @@ async def post_message(request: MessageRequest, req: Request):
 
 
 @app.post("/api/snapshot")
+@limiter.limit("10/minute")
 async def post_snapshot(request: SnapshotRequest, req: Request):
     """Receive a canvas snapshot from the frontend."""
     brain = _get_brain(req)
