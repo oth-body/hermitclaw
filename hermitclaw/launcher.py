@@ -89,34 +89,93 @@ def select_from_list(options, prompt="Select an option"):
             sys.exit(0)
 
 
+def load_env_file():
+    """Load environment variables from .env file if it exists."""
+    env_path = Path(__file__).parent.parent / ".env"
+    env_vars = {}
+    
+    if env_path.exists():
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    env_vars[key.strip()] = value.strip().strip('"\'')
+    
+    return env_vars, env_path
+
+
 def get_api_key(provider):
     """Prompt for API key if not already set."""
-    env_vars = {
+    env_vars, env_path = load_env_file()
+    
+    env_var_map = {
         "openai": "OPENAI_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
+        "zai": "Z_AI_API_KEY",
     }
     
-    env_var = env_vars.get(provider)
-    if env_var and os.environ.get(env_var):
-        print(f"✓ Found {env_var} in environment")
-        return None
+    env_var = env_var_map.get(provider)
     
-    if provider == "openai":
-        print("\nEnter your OpenAI API key (or press Enter to set via environment):")
-        print("  Get one at: https://platform.openai.com/api-keys")
-    elif provider == "openrouter":
-        print("\nEnter your OpenRouter API key (or press Enter to set via environment):")
-        print("  Get one at: https://openrouter.ai/keys")
+    # Check environment first, then .env file
+    existing_key = os.environ.get(env_var) or env_vars.get(env_var)
+    
+    if existing_key:
+        # Mask the key for display
+        masked = existing_key[:8] + "•" * 12 + existing_key[-4:] if len(existing_key) > 16 else "•" * 8
+        print(f"\n✓ Found existing {env_var}: {masked}")
+        
+        choice = input("  Keep existing key? (Y/n) > ").strip().lower()
+        if choice != "n":
+            return None  # Use existing
+        
+        print(f"\nEnter new {provider} API key:")
     else:
-        return None
+        if provider == "openai":
+            print("\nEnter your OpenAI API key (or press Enter to set via environment):")
+            print("  Get one at: https://platform.openai.com/api-keys")
+        elif provider == "openrouter":
+            print("\nEnter your OpenRouter API key (or press Enter to set via environment):")
+            print("  Get one at: https://openrouter.ai/keys")
+        elif provider == "zai":
+            print("\nEnter your z.ai API key:")
+            print("  Get one at: https://api.z.ai or https://open.bigmodel.cn")
+        else:
+            return None
     
     key = input("> ").strip()
     return key if key else None
 
 
+def save_to_env(key_name, key_value):
+    """Save API key to .env file."""
+    env_vars, env_path = load_env_file()
+    
+    # Update or add the key
+    env_vars[key_name] = key_value
+    
+    # Write back to .env
+    with open(env_path, "w") as f:
+        for key, value in env_vars.items():
+            f.write(f'{key}="{value}"\n')
+    
+    print(f"✓ Saved {key_name} to {env_path}")
+
+
 def write_config(provider, model, api_key=None, base_url=None, ollama_url=None):
-    """Write configuration to config.yaml."""
+    """Write configuration to config.yaml and optionally save API key to .env."""
     config_path = Path(__file__).parent.parent / "config.yaml"
+    
+    # Save API key to .env if provided
+    if api_key:
+        env_var_map = {
+            "openai": "OPENAI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY", 
+            "zai": "Z_AI_API_KEY",
+        }
+        env_var = env_var_map.get(provider)
+        if env_var:
+            save_to_env(env_var, api_key)
     
     # Read existing config
     if config_path.exists():
@@ -261,14 +320,12 @@ def main():
             else:
                 base_url = "https://open.bigmodel.cn/api/paas/v4"
         
-        # Prompt for API key
-        print("\nEnter your z.ai API key (or press Enter to set via Z_AI_API_KEY env var):")
-        if region == "us":
-            print("  Get one at: https://api.z.ai")
-        else:
-            print("  Get one at: https://open.bigmodel.cn")
-        api_key = input("> ").strip()
-        api_key = api_key if api_key else None
+        # Get API key (checks existing, prompts if needed)
+        api_key = get_api_key("zai")
+        
+        # Save to .env if new key provided
+        if api_key:
+            save_to_env("Z_AI_API_KEY", api_key)
         
         write_config("custom", model, api_key=api_key, base_url=base_url)
         print(f"\n✓ Configured to use z.ai ({region.upper()}, {plan_type}): {model}")
