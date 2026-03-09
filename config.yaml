@@ -1,26 +1,22 @@
 # HermitClaw Configuration
 provider: "custom"
-model: "glm-4-plus"
-api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
+model: "glm-4-air"
+api_key: null
 base_url: "https://api.z.ai/api/coding/paas/v4"
 
 # Bedrock configuration (optional, for bedrock provider)
-# aws_region: "us-east-1"       # AWS region (default: us-east-1)
-# Uses AWS SDK credential chain:
-#   - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
-#   - ~/.aws/credentials file
-#   - IAM role if running on EC2
+# aws_region: "us-east-1"
 
-thinking_pace_seconds: 5       # how often it thinks (steady pulse)
-max_thoughts_in_context: 4     # rolling window of recent thoughts
+thinking_pace_seconds: 5
+max_thoughts_in_context: 4
 
 # Memory stream settings
-reflection_threshold: 50       # accumulated importance before reflecting
-memory_retrieval_count: 3      # how many memories to retrieve per query
-embedding_model: "text-embedding-3-small"  # for Ollama use: nomic-embed-text
-recency_decay_rate: 0.995      # exponential decay rate for recency scoring
+reflection_threshold: 50
+memory_retrieval_count: 3
+embedding_model: "text-embedding-3-small"
+recency_decay_rate: 0.995
 
-# Web search provider (optional)
+# Web search provider
 web_search:
-provider: "custom"
+  provider: "searxng"
   searxng_url: "http://localhost:9091/"
