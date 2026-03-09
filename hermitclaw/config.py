@@ -88,4 +88,45 @@ def load_config() -> dict:
 
 
 # Global config — loaded once, can be updated at runtime
-config = load_config()
+_config = None
+
+
+def get_config() -> dict:
+    """Get the global config, loading it if necessary."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+
+def reload_config() -> dict:
+    """Force reload config from disk."""
+    global _config
+    _config = load_config()
+    return _config
+
+
+# Backwards compatibility - config is a dict-like object
+class ConfigProxy:
+    """Proxy that behaves like a dict but always returns current config."""
+    
+    def __getitem__(self, key):
+        return get_config()[key]
+    
+    def __setitem__(self, key, value):
+        get_config()[key] = value
+    
+    def get(self, key, default=None):
+        return get_config().get(key, default)
+    
+    def setdefault(self, key, default=None):
+        return get_config().setdefault(key, default)
+    
+    def __contains__(self, key):
+        return key in get_config()
+    
+    def __repr__(self):
+        return repr(get_config())
+
+
+config = ConfigProxy()
