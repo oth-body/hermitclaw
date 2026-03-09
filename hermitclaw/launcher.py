@@ -32,6 +32,28 @@ BEDROCK_MODELS = [
     ("mistral.mistral-large-2402-v1:0", "Mistral Large"),
 ]
 
+ZAI_MODELS = [
+    ("glm-z1-airx", "GLM Z1 AirX - Fastest, most economical"),
+    ("glm-z1-air", "GLM Z1 Air - Fast and efficient"),
+    ("glm-z1-flash", "GLM Z1 Flash - Balanced speed and quality"),
+    ("glm-z1-flashx", "GLM Z1 FlashX - Enhanced flash model"),
+    ("glm-4.5", "GLM 4.5 - Latest flagship model"),
+    ("glm-4-plus", "GLM 4 Plus - Enhanced capabilities"),
+    ("glm-4-air", "GLM 4 Air - Efficient standard model"),
+    ("glm-4-flash", "GLM 4 Flash - Fast responses"),
+    ("glm-4-long", "GLM 4 Long - Extended context"),
+]
+
+ZAI_REGIONS = [
+    ("us", "US Region - api.z.ai"),
+    ("cn", "China Region - open.bigmodel.cn"),
+]
+
+ZAI_PLAN_TYPES = [
+    ("general", "General - Standard API access"),
+    ("coding", "Coding - Optimized for code tasks"),
+]
+
 
 def detect_ollama():
     """Check if Ollama is running locally."""
@@ -168,6 +190,7 @@ def main():
     # Build provider menu
     providers = [
         ("ollama", "Ollama (Local) - Free, private, runs on your machine"),
+        ("zai", "z.ai / Zhipu AI - GLM models (US & China)"),
         ("openai", "OpenAI - GPT-4, GPT-4o"),
         ("openrouter", "OpenRouter - Access to many models"),
         ("bedrock", "AWS Bedrock - Claude, Llama via AWS"),
@@ -208,6 +231,48 @@ def main():
         api_key = get_api_key("openai")
         write_config("openai", model, api_key=api_key)
         print(f"\n✓ Configured to use OpenAI: {model}")
+        print("  Run 'python -m hermitclaw.main' to start!")
+    
+    elif provider == "zai":
+        # Select region
+        region = select_from_list(ZAI_REGIONS, "Select your region")
+        if not region:
+            return
+        
+        # Select plan type
+        plan_type = select_from_list(ZAI_PLAN_TYPES, "Select your plan type")
+        if not plan_type:
+            return
+        
+        # Select model
+        model = select_from_list(ZAI_MODELS, "Select a GLM model")
+        if not model:
+            return
+        
+        # Build base URL based on region and plan
+        if region == "us":
+            if plan_type == "coding":
+                base_url = "https://api.z.ai/api/coding/paas/v4"
+            else:
+                base_url = "https://api.z.ai/api/paas/v4"
+        else:  # cn
+            if plan_type == "coding":
+                base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+            else:
+                base_url = "https://open.bigmodel.cn/api/paas/v4"
+        
+        # Prompt for API key
+        print("\nEnter your z.ai API key (or press Enter to set via Z_AI_API_KEY env var):")
+        if region == "us":
+            print("  Get one at: https://api.z.ai")
+        else:
+            print("  Get one at: https://open.bigmodel.cn")
+        api_key = input("> ").strip()
+        api_key = api_key if api_key else None
+        
+        write_config("custom", model, api_key=api_key, base_url=base_url)
+        print(f"\n✓ Configured to use z.ai ({region.upper()}, {plan_type}): {model}")
+        print(f"  Endpoint: {base_url}")
         print("  Run 'python -m hermitclaw.main' to start!")
     
     elif provider == "openrouter":
