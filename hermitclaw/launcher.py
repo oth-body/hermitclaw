@@ -371,6 +371,91 @@ def main():
         write_config("custom", model, base_url=base_url)
         print(f"\n✓ Configured custom endpoint: {base_url}")
         print("  Run 'python -m hermitclaw.main' to start!")
+    
+    # Configure web search
+    configure_web_search()
+
+
+def configure_web_search():
+    """Configure web search provider (SearXNG, Brave, etc.)."""
+    print("\n" + "=" * 60)
+    print("🔍 Web Search Configuration")
+    print("=" * 60)
+    print("Enable web search for real-time information lookup.\n")
+    
+    enable = input("Enable web search? (Y/n) > ").strip().lower()
+    if enable == "n":
+        write_web_search_config("none")
+        print("\n✓ Web search disabled")
+        return
+    
+    print("\nAvailable web search providers:\n")
+    print("  1. SearXNG - Self-hosted, private, free")
+    print("  2. Brave Search API - Fast, requires API key")
+    print("  3. Ollama Cloud - For minimax models")
+    print("  4. None - Disable web search")
+    
+    choice = input("\nSelect provider (1-4) > ").strip()
+    
+    provider_map = {"1": "searxng", "2": "brave", "3": "ollama", "4": "none"}
+    provider = provider_map.get(choice, "none")
+    
+    if provider == "searxng":
+        url = input("Enter SearXNG URL (default: http://localhost:8080) > ").strip()
+        url = url or "http://localhost:8080"
+        write_web_search_config("searxng", searxng_url=url)
+        print(f"\n✓ SearXNG configured: {url}")
+    
+    elif provider == "brave":
+        key = input("Enter Brave Search API key > ").strip()
+        if key:
+            save_to_env("BRAVE_API_KEY", key)
+            write_web_search_config("brave")
+            print("\n✓ Brave Search configured")
+        else:
+            print("\n⚠️  No API key provided, web search disabled")
+            write_web_search_config("none")
+    
+    elif provider == "ollama":
+        key = input("Enter Ollama API key (or press Enter to use OLLAMA_API_KEY env var) > ").strip()
+        if key:
+            save_to_env("OLLAMA_API_KEY", key)
+        write_web_search_config("ollama")
+        print("\n✓ Ollama Cloud web search configured")
+    
+    else:
+        write_web_search_config("none")
+        print("\n✓ Web search disabled")
+
+
+def write_web_search_config(provider, searxng_url=None):
+    """Write web search configuration to config.yaml."""
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    
+    # Read existing config
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            content = f.read()
+    else:
+        content = ""
+    
+    # Build web_search section
+    web_search_yaml = f'\nweb_search:\n  provider: "{provider}"\n'
+    if searxng_url:
+        web_search_yaml += f'  searxng_url: "{searxng_url}"\n'
+    
+    # Check if web_search section exists
+    if "web_search:" in content:
+        # Replace existing web_search section
+        import re
+        pattern = r'web_search:.*?(?=\n\w|\Z)'
+        content = re.sub(pattern, web_search_yaml.strip(), content, flags=re.DOTALL)
+    else:
+        # Append web_search section
+        content = content.rstrip() + "\n" + web_search_yaml
+    
+    with open(config_path, "w") as f:
+        f.write(content)
 
 
 if __name__ == "__main__":
