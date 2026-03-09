@@ -59,6 +59,7 @@ class ProviderDetector:
             results["openai"] = await self._check_openai()
             results["openrouter"] = await self._check_openrouter()
             results["zai"] = await self._check_zai()
+            results["searxng"] = await self._check_searxng()
             return results
     
     async def _detect_with_progress(self) -> Dict[str, any]:
@@ -313,6 +314,50 @@ class ProviderDetector:
             "models": models,
             "error": None
         }
+    
+    async def _check_searxng(self) -> Dict:
+        """Check if SearXNG is available."""
+        searxng_url = os.environ.get("SEARXNG_URL") or "http://localhost:8080"
+        
+        if HTTPX_AVAILABLE:
+            try:
+                async with httpx.AsyncClient(timeout=3) as client:
+                    response = await client.get(f"{searxng_url}/healthz")
+                    if response.status_code == 200:
+                        return {
+                            "available": True,
+                            "url": searxng_url,
+                            "error": None
+                        }
+            except Exception:
+                pass
+        
+        # Try common local URLs
+        common_urls = [
+            "http://localhost:8080",
+            "http://localhost:8888",
+            "http://127.0.0.1:8080",
+        ]
+        
+        for url in common_urls:
+            try:
+                if HTTPX_AVAILABLE:
+                    async with httpx.AsyncClient(timeout=2) as client:
+                        response = await client.get(f"{url}/", follow_redirects=True)
+                        if "searx" in response.text.lower() or response.status_code == 200:
+                            return {
+                                "available": True,
+                                "url": url,
+                                "error": None
+                            }
+            except Exception:
+                continue
+        
+        return {
+            "available": False,
+            "url": None,
+            "error": "SearXNG not detected locally"
+        }
 
 
 class HermitClawTUI:
@@ -330,6 +375,10 @@ class HermitClawTUI:
         self.zai_base_url = None
         self.zai_region = None
         self.zai_plan_type = None
+        self.web_search_enabled = False
+        self.web_search_provider = None
+        self.searxng_url = None
+        self.brave_api_key = None
     
     def _create_header(self) -> Panel:
         """Create the beautiful header panel."""
@@ -382,6 +431,13 @@ class HermitClawTUI:
             table.add_row("✅", f"z.ai ready ({len(zai['models'])} models)")
         else:
             table.add_row("❌", "z.ai: No API key")
+        
+        # SearXNG status
+        searxng = self.providers.get("searxng") or {}
+        if searxng.get("available"):
+            table.add_row("✅", f"SearXNG at {searxng.get('url', 'localhost:8080')}")
+        else:
+            table.add_row("⚠️ ", "SearXNG: Not detected (optional)")
         
         return Panel(table, title="🔍 Detection Results", box=box.ROUNDED, border_style="cyan")
     
@@ -627,6 +683,9 @@ api_key: '••••••••••••••••••••'  # Set v
         if self.selected_provider == "zai":
             self._configure_zai()
         
+        # Configure web search provider
+        self._configure_web_search()
+        
         return self.providers
     
     def _configure_zai(self):
@@ -669,6 +728,75 @@ api_key: '••••••••••••••••••••'  # Set v
         
         # Show updated config preview
         self.console.print(self._create_config_preview())
+    
+    def _configure_web_search(self):
+        """Interactive configuration for web search provider."""
+        from rich.prompt import Prompt, Confirm
+        
+        self.console.print("\n")
+        self.console.print("[bold]🔍 Web Search Configuration[/bold]")
+        self.console.print("[dim]Enable web search for real-time information lookup[/dim]")
+        
+        # Check if user wants web search
+        if not Confirm.ask("Enable web search?", default=True):
+            self.web_search_enabled = False
+            return
+        
+        self.web_search_enabled = True
+        
+        # Web search provider options
+        providers = [
+            ("searxng", "SearXNG - Self-hosted, private, free"),
+            ("brave", "Brave Search API - Fast, requires API key"),
+            ("ollama", "Ollama Cloud - For minimax models"),
+            ("none", "Disable web search"),
+        ]
+        
+        self.console.print("\n[bold]Available web search providers:[/bold]\n")
+        for i, (value, desc) in enumerate(providers, 1):
+            status = ""
+            if value == "searxng":
+                searxng = self.providers.get("searxng") or {}
+                status = " ✅ detected" if searxng.get("available") else " (not detected)"
+            elif value == "brave":
+                status = " (needs API key)"
+            self.console.print(f"  {i}. {desc}{status}")
+        
+        choice = Prompt.ask(
+            "\nSelect web search provider",
+            choices=["1", "2", "3", "4"],
+            default="1"
+        )
+        
+        provider_map = {"1": "searxng", "2": "brave", "3": "ollama", "4": "none"}
+        self.web_search_provider = provider_map[choice]
+        
+        if self.web_search_provider == "searxng":
+            searxng = self.providers.get("searxng") or {}
+            default_url = searxng.get("url", "http://localhost:8080")
+            self.searxng_url = Prompt.ask(
+                "Enter SearXNG URL",
+                default=default_url
+            )
+            self.console.print(f"\n✅ SearXNG configured: {self.searxng_url}")
+        
+        elif self.web_search_provider == "brave":
+            self.brave_api_key = Prompt.ask(
+                "Enter Brave Search API key",
+                password=True
+            )
+            if self.brave_api_key:
+                self.console.print("\n✅ Brave Search configured")
+            else:
+                self.console.print("\n⚠️  No API key provided, web search disabled")
+                self.web_search_provider = "none"
+        
+        elif self.web_search_provider == "ollama":
+            self.console.print("\n✅ Ollama Cloud web search configured")
+            self.console.print("[dim]Requires OLLAMA_API_KEY environment variable[/dim]")
+        
+        else:
+            self.console.print("\n✅ Web search disabled")
     
     def _get_best_provider(self) -> Optional[str]:
         """Choose the best available provider."""
