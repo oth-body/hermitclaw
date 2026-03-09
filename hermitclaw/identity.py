@@ -145,44 +145,92 @@ def _collect_entropy() -> bytes:
     # Collect keystrokes with timing
     entropy_pool = bytearray()
     start = time.perf_counter_ns()
+    chars_collected = 0
 
-    try:
-        # Try raw terminal mode for character-by-character reading
-        import tty
-        import termios
+    # Check platform for entropy collection method
+    if sys.platform == "win32":
+        # Windows: use msvcrt for character-by-character reading
+        try:
+            import msvcrt
 
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        tty.setcbreak(fd)
-
-        sys.stdout.write("  > ")
-        sys.stdout.flush()
-        chars_collected = 0
-
-        while True:
-            ch = sys.stdin.read(1)
-            if ch in ("\n", "\r"):
-                break
-
-            # Mix in the character and nanosecond timing
-            t = time.perf_counter_ns() - start
-            entropy_pool.extend(ch.encode())
-            entropy_pool.extend(t.to_bytes(8, "big"))
-            chars_collected += 1
-            sys.stdout.write(ch)
+            sys.stdout.write("  > ")
             sys.stdout.flush()
 
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        print()
+            while True:
+                if msvcrt.kbhit():
+                    ch = msvcrt.getch()
+                    
+                    # Enter key
+                    if ch in (b'\r', b'\n'):
+                        break
+                    
+                    # Mix in the character and nanosecond timing
+                    t = time.perf_counter_ns() - start
+                    entropy_pool.extend(ch)
+                    entropy_pool.extend(t.to_bytes(8, "big"))
+                    chars_collected += 1
+                    
+                    # Echo the character
+                    try:
+                        sys.stdout.write(ch.decode('utf-8', errors='replace'))
+                    except:
+                        sys.stdout.write('?')
+                    sys.stdout.flush()
 
-    except (ImportError, termios.error, AttributeError):
-        # Fallback for systems without termios (Windows, etc.)
-        raw = input("  > ")
-        for i, ch in enumerate(raw):
-            t = time.perf_counter_ns() - start
-            entropy_pool.extend(ch.encode())
-            entropy_pool.extend(t.to_bytes(8, "big"))
-        chars_collected = len(raw)
+            print()
+
+        except ImportError:
+            # Fallback if msvcrt not available
+            raw = input("  > ")
+            for ch in raw:
+                t = time.perf_counter_ns() - start
+                entropy_pool.extend(ch.encode())
+                entropy_pool.extend(t.to_bytes(8, "big"))
+            chars_collected = len(raw)
+    
+    else:
+        # Unix/Linux/macOS: use tty/termios for character-by-character reading
+        try:
+            import tty
+            import termios
+
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+
+            sys.stdout.write("  > ")
+            sys.stdout.flush()
+
+            while True:
+                ch = sys.stdin.read(1)
+                if ch in ("\n", "\r"):
+                    break
+
+                # Mix in the character and nanosecond timing
+                t = time.perf_counter_ns() - start
+                entropy_pool.extend(ch.encode())
+                entropy_pool.extend(t.to_bytes(8, "big"))
+                chars_collected += 1
+                sys.stdout.write(ch)
+                sys.stdout.flush()
+
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            print()
+
+        except (ImportError, AttributeError):
+            # Fallback for systems without termios
+            try:
+                import termios
+                termios_available = True
+            except ImportError:
+                termios_available = False
+            
+            raw = input("  > ")
+            for ch in raw:
+                t = time.perf_counter_ns() - start
+                entropy_pool.extend(ch.encode())
+                entropy_pool.extend(t.to_bytes(8, "big"))
+            chars_collected = len(raw)
 
     print(f"\n  Collected {chars_collected} keystrokes of entropy.")
 
