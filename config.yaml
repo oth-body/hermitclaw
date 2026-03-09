@@ -1,6 +1,6 @@
 # HermitClaw Configuration
 provider: "custom"
-model: "glm-4-air"
+model: "glm-4-plus"
 api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
 base_url: "https://api.z.ai/api/coding/paas/v4"
 
@@ -22,5 +22,5 @@ recency_decay_rate: 0.995      # exponential decay rate for recency scoring
 
 # Web search provider (optional)
 web_search:
-  provider: "searxng"
+provider: "custom"
   searxng_url: "http://localhost:9091/"

@@ -164,6 +164,7 @@ def save_to_env(key_name, key_value):
 
 def write_config(provider, model, api_key=None, base_url=None, ollama_url=None):
     """Write configuration to config.yaml and optionally save API key to .env."""
+    import yaml
     config_path = Path(__file__).parent.parent / "config.yaml"
     
     # Save API key to .env if provided
@@ -180,55 +181,23 @@ def write_config(provider, model, api_key=None, base_url=None, ollama_url=None):
     # Read existing config
     if config_path.exists():
         with open(config_path, "r") as f:
-            lines = f.readlines()
+            config = yaml.safe_load(f) or {}
     else:
-        lines = []
+        config = {}
     
-    # Update provider/model lines
-    new_lines = []
-    provider_set = False
-    model_set = False
-    base_url_set = False
-    api_key_set = False
-    ollama_url_set = False
-    
-    for line in lines:
-        if line.strip().startswith("provider:"):
-            new_lines.append(f'provider: "{provider}"\n')
-            provider_set = True
-        elif line.strip().startswith("model:"):
-            new_lines.append(f'model: "{model}"\n')
-            model_set = True
-        elif line.strip().startswith("base_url:") and base_url:
-            new_lines.append(f'base_url: "{base_url}"\n')
-            base_url_set = True
-        elif line.strip().startswith("api_key:") and api_key:
-            new_lines.append(f'api_key: "{api_key}"\n')
-            api_key_set = True
-        elif line.strip().startswith("ollama_url:") and ollama_url:
-            new_lines.append(f'ollama_url: "{ollama_url}"\n')
-            ollama_url_set = True
-        else:
-            new_lines.append(line)
-    
-    # Add missing config lines after header comments
-    if not provider_set:
-        insert_pos = 0
-        for i, line in enumerate(new_lines):
-            if not line.strip().startswith("#") and line.strip():
-                insert_pos = i
-                break
-        new_lines.insert(insert_pos, f'provider: "{provider}"\n')
-    
-    if not model_set:
-        for i, line in enumerate(new_lines):
-            if "provider:" in line:
-                new_lines.insert(i + 1, f'model: "{model}"\n')
-                break
+    # Update config values
+    config["provider"] = provider
+    config["model"] = model
+    if base_url:
+        config["base_url"] = base_url
+    if api_key:
+        config["api_key"] = api_key
+    if ollama_url:
+        config["ollama_url"] = ollama_url
     
     # Write updated config
     with open(config_path, "w") as f:
-        f.writelines(new_lines)
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
     
     print(f"\n✓ Configuration saved to {config_path}")
 
@@ -430,46 +399,24 @@ def configure_web_search():
 
 def write_web_search_config(provider, searxng_url=None):
     """Write web search configuration to config.yaml."""
+    import yaml
     config_path = Path(__file__).parent.parent / "config.yaml"
     
     # Read existing config
     if config_path.exists():
         with open(config_path, "r") as f:
-            lines = f.readlines()
+            config = yaml.safe_load(f) or {}
     else:
-        lines = []
+        config = {}
     
-    # Build web_search lines
-    web_search_lines = [
-        "web_search:\n",
-        f'  provider: "{provider}"\n'
-    ]
+    # Update web_search section
+    config["web_search"] = {"provider": provider}
     if searxng_url:
-        web_search_lines.append(f'  searxng_url: "{searxng_url}"\n')
+        config["web_search"]["searxng_url"] = searxng_url
     
-    # Find and remove existing web_search section
-    new_lines = []
-    in_web_search = False
-    for line in lines:
-        if line.strip().startswith("web_search:"):
-            in_web_search = True
-            continue
-        if in_web_search:
-            # Skip indented lines under web_search
-            if line.startswith("  ") or line.startswith("\t"):
-                continue
-            else:
-                in_web_search = False
-        
-        if not in_web_search:
-            new_lines.append(line)
-    
-    # Append new web_search section
-    new_lines.append("\n")
-    new_lines.extend(web_search_lines)
-    
+    # Write back
     with open(config_path, "w") as f:
-        f.writelines(new_lines)
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
 if __name__ == "__main__":
