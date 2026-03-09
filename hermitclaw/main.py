@@ -62,96 +62,22 @@ def _discover_crabs() -> dict[str, Brain]:
     return brains
 
 
-def _check_config_and_setup():
-    """Check if config exists and run setup if needed."""
-    config_path = os.path.join(PROJECT_ROOT, "config.yaml")
-    
-    # Check if config exists and is valid
-    if os.path.isfile(config_path):
-        try:
-            with open(config_path, "r") as f:
-                import yaml
-                config_data = yaml.safe_load(f)
-                if config_data.get("provider") and config_data.get("model"):
-                    return True  # Config is good
-        except Exception:
-            pass  # Will fall through to setup
-    
-    # Run setup
-    print("\n  🔧 No valid configuration found. Running setup...")
-    try:
-        from .tui_setup import HermitClawTUI
-        import asyncio
-        
-        async def run_setup():
-            tui = HermitClawTUI()
-            await tui.run()
-            return True
-        
-        asyncio.run(run_setup())
-        return True
-    except ImportError:
-        print("  ❌ Rich library not available. Using simple setup...")
-        print("  To get the beautiful TUI, install: pip install rich httpx")
-        
-        # Fallback to basic prompts
-        print("\n  Basic Configuration:")
-        provider = input("  Provider (openai/ollama/openrouter/custom) > ").strip().lower()
-        model = input("  Model name > ").strip()
-        base_url = None
-        api_key = None
-        
-        if provider == "ollama":
-            base_url = "http://localhost:11434/v1"
-        elif provider == "custom":
-            base_url = input("  Base URL > ").strip()
-        
-        if provider not in ["ollama"]:
-            api_key = input("  API key (leave blank to set via env) > ").strip() or None
-        
-        # Write basic config
-        config = {
-            "provider": provider,
-            "model": model,
-            "api_key": api_key,
-        }
-        if base_url:
-            config["base_url"] = base_url
-        
-        import yaml
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
-        
-        print("  ✅ Configuration saved!")
-        return True
-    except KeyboardInterrupt:
-        print("\n  ❌ Setup cancelled.")
-        return False
-
-
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="HermitClaw - AI creatures that live on your computer")
-    parser.add_argument("--setup", action="store_true", help="Run model setup wizard")
-    parser.add_argument("--skip-setup", action="store_true", help="Skip model setup even if no config exists")
+    parser = argparse.ArgumentParser(description="HermitClaw - AI creature that lives in a folder")
+    parser.add_argument("--setup", action="store_true", help="Run model selection launcher")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run server on")
     args = parser.parse_args()
     
-    # Handle setup flag
-    if args.setup:
-        try:
-            from .tui_setup import HermitClawTUI
-            import asyncio
-            
-            asyncio.run(HermitClawTUI().run())
-        except ImportError:
-            print("❌ Rich library not available. Install with: pip install rich httpx")
-        sys.exit(0)
-    
-    # Check configuration unless explicitly skipped
-    if not args.skip_setup:
-        if not _check_config_and_setup():
-            sys.exit(1)
+    # Run setup launcher if requested or if config doesn't exist
+    config_path = os.path.join(PROJECT_ROOT, "config.yaml")
+    if args.setup or not os.path.exists(config_path):
+        from hermitclaw.launcher import main as run_launcher
+        run_launcher()
+        # Reload config after launcher
+        from hermitclaw.config import reload_config
+        reload_config()
     
     # Discover existing crabs
     brains = _discover_crabs()
@@ -176,13 +102,18 @@ if __name__ == "__main__":
 
     # Initialize the app with all brains
     app = create_app(brains)
+    
+    # Register shutdown handlers
+    from hermitclaw.server import register_shutdown_handlers
+    register_shutdown_handlers()
 
     names = [b.identity["name"] for b in brains.values()]
     print(f"\n  Starting {len(brains)} crab(s): {', '.join(names)}")
-    print(f"  Open http://localhost:8000 to watch them think\n")
+    print(f"  Open http://localhost:{args.port} to watch them think\n")
+    print(f"  Press Ctrl+C to stop gracefully\n")
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=args.port,
         log_level="info",
     )

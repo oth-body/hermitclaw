@@ -380,6 +380,34 @@ model: "google/gemini-2.0-flash-001"
 # export OPENROUTER_API_KEY=your-key
 ```
 
+**Using AWS Bedrock:**
+```yaml
+provider: "bedrock"
+model: "anthropic.claude-3-sonnet-20240229-v1:0"
+# aws_region: "us-east-1"  # optional, defaults to us-east-1
+```
+Requires boto3: `pip install hermitclaw[bedrock]`
+Uses AWS SDK credential chain (env vars, ~/.aws/credentials, IAM role)
+
+**Web Search Providers:**
+
+HermitClaw supports multiple web search backends:
+
+```yaml
+web_search:
+  provider: "ollama"           # "ollama" | "searxng" | "brave" | "custom"
+  
+  # SearXNG (self-hosted)
+  searxng_url: "http://localhost:8080"
+  
+  # Brave Search API
+  brave_api_key: null          # or set BRAVE_API_KEY env var
+  
+  # Custom endpoint
+  custom_url: null
+  custom_headers: {}           # extra headers for custom provider
+```
+
 Set your API key via environment variable for OpenAI: `export OPENAI_API_KEY="sk-..."`. Or set `api_key` directly in `config.yaml`.
 
 ---

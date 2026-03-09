@@ -5,21 +5,58 @@ import hashlib
 import json
 import logging
 import os
+import signal
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from hermitclaw.brain import Brain
 from hermitclaw.config import config
 from hermitclaw.identity import _derive_traits
+from hermitclaw.models import MessageRequest, CreateCrabRequest, FocusModeRequest, SnapshotRequest
 
 logger = logging.getLogger("hermitclaw.server")
 
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="HermitClaw")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 brains: dict[str, Brain] = {}  # crab_id -> Brain
+_shutdown_event: asyncio.Event | None = None
+
+
+def _handle_shutdown_signal(signum, frame):
+    """Handle SIGTERM/SIGINT for graceful shutdown."""
+    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    
+    # Stop all brains
+    for crab_id, brain in brains.items():
+        logger.info(f"Stopping {brain.identity['name']} ({crab_id})...")
+        brain.stop()
+    
+    # Set shutdown event if available
+    if _shutdown_event:
+        _shutdown_event.set()
+
+
+def register_shutdown_handlers(event: asyncio.Event = None):
+    """Register signal handlers for graceful shutdown."""
+    global _shutdown_event
+    if event:
+        _shutdown_event = event
+    
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    logger.info("Registered shutdown signal handlers (SIGTERM, SIGINT)")
 
 
 def create_app(all_brains: dict[str, Brain]) -> FastAPI:
@@ -87,6 +124,39 @@ async def websocket_default(ws: WebSocket):
 # --- REST API ---
 
 
+@app.get("/api/ping")
+async def ping():
+    """Simple liveness check."""
+    return {"pong": True}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check for monitoring systems."""
+    import time
+    from hermitclaw.config import config as cfg
+    
+    crab_status = [
+        {
+            "id": crab_id,
+            "name": brain.identity["name"],
+            "state": brain.state,
+            "thought_count": brain.thought_count,
+            "running": brain.running,
+        }
+        for crab_id, brain in brains.items()
+    ]
+    
+    return {
+        "status": "healthy",
+        "crabs": crab_status,
+        "config": {
+            "provider": cfg.get("provider"),
+            "model": cfg.get("model"),
+        },
+    }
+
+
 @app.get("/api/crabs")
 async def get_crabs():
     """List all running crabs."""
@@ -102,14 +172,12 @@ async def get_crabs():
 
 
 @app.post("/api/crabs")
-async def create_crab(request: Request):
+@limiter.limit("5/minute")
+async def create_crab(request: CreateCrabRequest):
     """Create a new crab at runtime."""
-    body = await request.json()
-    name = body.get("name", "").strip()
-    if not name:
-        return {"ok": False, "error": "name is required"}
-
-    crab_id = name.lower()
+    name = request.name.strip()
+    crab_id = name.lower().replace(" ", "_")
+    
     if crab_id in brains:
         return {"ok": False, "error": f"crab '{crab_id}' already exists"}
 
@@ -181,21 +249,20 @@ async def get_status(request: Request):
 
 
 @app.post("/api/focus-mode")
-async def post_focus_mode(request: Request):
+@limiter.limit("20/minute")
+async def post_focus_mode(request: FocusModeRequest, req: Request):
     """Toggle focus mode on or off."""
-    brain = _get_brain(request)
-    body = await request.json()
-    enabled = bool(body.get("enabled", False))
-    await brain.set_focus_mode(enabled)
-    return {"ok": True, "focus_mode": enabled}
+    brain = _get_brain(req)
+    await brain.set_focus_mode(request.enabled)
+    return {"ok": True, "focus_mode": request.enabled}
 
 
 @app.post("/api/message")
-async def post_message(request: Request):
+@limiter.limit("30/minute")
+async def post_message(request: MessageRequest, req: Request):
     """Receive a message from the user (voice from outside the room)."""
-    brain = _get_brain(request)
-    body = await request.json()
-    text = body.get("text", "").strip()
+    brain = _get_brain(req)
+    text = request.text.strip()
     if not text:
         return {"ok": False, "error": "empty message"}
     if brain._waiting_for_reply:
@@ -206,11 +273,11 @@ async def post_message(request: Request):
 
 
 @app.post("/api/snapshot")
-async def post_snapshot(request: Request):
+@limiter.limit("10/minute")
+async def post_snapshot(request: SnapshotRequest, req: Request):
     """Receive a canvas snapshot from the frontend."""
-    brain = _get_brain(request)
-    body = await request.json()
-    brain.latest_snapshot = body.get("image")
+    brain = _get_brain(req)
+    brain.latest_snapshot = request.image
     return {"ok": True}
 
 
@@ -241,6 +308,60 @@ async def get_file(request: Request, path: str):
             return {"path": path, "content": f.read()}
     except Exception as e:
         return {"path": path, "content": f"Error: {e}"}
+
+
+@app.post("/api/files/upload")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    dest_path: str = Form(default=""),
+):
+    """Upload a file to the crab's box. Drops it in the root or specified subfolder."""
+    brain = _get_brain(request)
+    env_root = os.path.realpath(brain.env_path)
+    
+    # Sanitize destination path
+    dest_path = dest_path.strip("/")
+    if ".." in dest_path:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid path: '..' not allowed"},
+        )
+    
+    # Build full destination path
+    filename = os.path.basename(file.filename or "uploaded_file")
+    if dest_path:
+        full_dir = os.path.realpath(os.path.join(env_root, dest_path))
+    else:
+        full_dir = env_root
+    
+    # Ensure directory exists
+    os.makedirs(full_dir, exist_ok=True)
+    
+    # Final file path
+    full_path = os.path.join(full_dir, filename)
+    
+    # Security check: must be inside env_root
+    if not os.path.realpath(full_path).startswith(env_root):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid path: outside environment"},
+        )
+    
+    # Write the file
+    try:
+        content = await file.read()
+        with open(full_path, "wb") as f:
+            f.write(content)
+        rel_path = os.path.relpath(full_path, env_root)
+        logger.info(f"Uploaded file: {rel_path} ({len(content)} bytes)")
+        return {"success": True, "path": rel_path, "size": len(content)}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )
 
 
 # --- Static frontend ---

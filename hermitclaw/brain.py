@@ -16,7 +16,7 @@ from hermitclaw.prompts import (
     PLANNING_PROMPT,
     FOCUS_NUDGE,
 )
-from hermitclaw.providers import chat, chat_short
+from hermitclaw.providers import chat, chat_short, stream_chat
 from hermitclaw.tools import execute_tool, ensure_venv
 
 logger = logging.getLogger("hermitclaw.brain")
@@ -676,6 +676,20 @@ class Brain:
 
         try:
             max_tokens = config.get("max_output_tokens", 1000)
+            
+            # Optional streaming for text display (tool calls still need non-streaming)
+            if config.get("enable_streaming", False):
+                # Stream text chunks for display
+                for chunk in await asyncio.to_thread(
+                    lambda: list(stream_chat(input_list, True, instructions, max_tokens))
+                ):
+                    if chunk.get("text"):
+                        await self._broadcast({
+                            "event": "stream_token",
+                            "data": {"text": chunk["text"]}
+                        })
+            
+            # Make actual call (needed for tool calls)
             response = await asyncio.to_thread(
                 chat, input_list, True, instructions, max_tokens
             )
@@ -758,7 +772,6 @@ class Brain:
                     {
                         "type": "function_call_output",
                         "call_id": call_id,
-                        "name": tool_name,
                         "output": result,
                     }
                 )
@@ -996,6 +1009,13 @@ class Brain:
         # Heavy init — runs in background thread so the event loop stays free
         await asyncio.to_thread(ensure_venv, self.env_path)
         self.stream = await asyncio.to_thread(MemoryStream, self.env_path)
+        
+        # Prune memory stream on startup if configured
+        if config.get("memory_prune_on_startup", False):
+            removed = self.stream.prune()
+            if removed > 0:
+                logger.info(f"Pruned {removed} old memories on startup")
+        
         # Mark subdirectory files as "seen" but leave root-level user files
         # (PDFs, images, etc.) as unseen so they trigger inbox alerts on first cycle
         all_files = self._scan_env_files()
@@ -1022,6 +1042,12 @@ class Brain:
             self._cycles_since_plan += 1
             if self._cycles_since_plan >= Brain.PLAN_INTERVAL:
                 await self._plan()
+                
+                # Also prune memories periodically (every planning cycle)
+                if config.get("memory_max_entries") or config.get("memory_max_age_days"):
+                    removed = self.stream.prune()
+                    if removed > 0:
+                        logger.info(f"Pruned {removed} memories during planning cycle")
 
             self.state = "idle"
             await self._broadcast(

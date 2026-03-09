@@ -1,9 +1,15 @@
 # HermitClaw Configuration
-provider: "custom"
-model: "glm-5"
-base_url: "https://api.zai-ai.com/v1"
+provider: "openai"              # "openai" | "openrouter" | "bedrock" | "custom"
+model: "gpt-4.1"
 api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
-ollama_api_key: null            # for Ollama cloud web search (minimax:cloud etc.) — OLLAMA_API_KEY env
+base_url: null                  # auto-set for known providers; required for "custom"
+
+# Bedrock configuration (optional, for bedrock provider)
+# aws_region: "us-east-1"       # AWS region (default: us-east-1)
+# Uses AWS SDK credential chain:
+#   - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
+#   - ~/.aws/credentials file
+#   - IAM role if running on EC2
 
 thinking_pace_seconds: 5       # how often it thinks (steady pulse)
 max_thoughts_in_context: 4     # rolling window of recent thoughts
@@ -13,6 +19,20 @@ reflection_threshold: 50       # accumulated importance before reflecting
 memory_retrieval_count: 3      # how many memories to retrieve per query
 embedding_model: "text-embedding-3-small"  # for Ollama use: nomic-embed-text
 recency_decay_rate: 0.995      # exponential decay rate for recency scoring
+
+# Web search provider (optional)
+# web_search:
+#   provider: "ollama"          # "ollama" | "searxng" | "brave" | "custom"
+#   searxng_url: "http://localhost:8080"    # for searxng provider
+#   brave_api_key: null                      # for brave provider
+#   custom_url: null                         # for custom provider
+#   custom_headers: {}                       # extra headers for custom provider
+
+# Memory retention policy (optional)
+# memory_max_entries: 1000     # keep max N memories
+# memory_max_age_days: 30      # delete memories older than N days
+# memory_min_importance: 3     # delete memories below importance threshold
+# memory_prune_on_startup: true # run cleanup on startup
 
 # environment_path is auto-detected from *_box/ directories
 # Uncomment to override: environment_path: "./mybox"
