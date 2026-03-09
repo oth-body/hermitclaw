@@ -327,6 +327,9 @@ class HermitClawTUI:
         self.providers = {}
         self.selected_provider = None
         self.selected_model = None
+        self.zai_base_url = None
+        self.zai_region = None
+        self.zai_plan_type = None
     
     def _create_header(self) -> Panel:
         """Create the beautiful header panel."""
@@ -533,9 +536,10 @@ model: '{self.selected_model}'
 api_key: 'sk-or-•••••••••••••••••'  # Set via OPENROUTER_API_KEY
 # base_url: null"""
         elif self.selected_provider == "zai":
+            base_url = getattr(self, 'zai_base_url', 'https://api.z.ai/api/paas/v4')
             config_text = f"""provider: 'custom'
 model: '{self.selected_model}'
-base_url: 'https://api.z.ai/api/paas/v4'  # or /api/coding/paas/v4
+base_url: '{base_url}'
 api_key: '••••••••••••••••••••'  # Set via Z_AI_API_KEY
 # embedding_model: 'embedding-3'"""
         else:
@@ -619,7 +623,52 @@ api_key: '••••••••••••••••••••'  # Set v
         self.console.print("\n")
         self.console.print(layout)
         
+        # If z.ai is selected, prompt for region and plan type
+        if self.selected_provider == "zai":
+            self._configure_zai()
+        
         return self.providers
+    
+    def _configure_zai(self):
+        """Interactive configuration for z.ai region and plan type."""
+        from rich.prompt import Prompt
+        
+        self.console.print("\n")
+        
+        # Region selection
+        region = Prompt.ask(
+            "🌍 Select your z.ai region",
+            choices=["us", "cn"],
+            default="us"
+        )
+        
+        # Plan type selection
+        plan_type = Prompt.ask(
+            "📋 Select your plan type",
+            choices=["general", "coding"],
+            default="general"
+        )
+        
+        # Build base URL based on selections
+        if region == "us":
+            if plan_type == "coding":
+                self.zai_base_url = "https://api.z.ai/api/coding/paas/v4"
+            else:
+                self.zai_base_url = "https://api.z.ai/api/paas/v4"
+        else:  # cn
+            if plan_type == "coding":
+                self.zai_base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+            else:
+                self.zai_base_url = "https://open.bigmodel.cn/api/paas/v4"
+        
+        self.zai_region = region
+        self.zai_plan_type = plan_type
+        
+        self.console.print(f"\n✅ Configured z.ai ({region.upper()}, {plan_type})")
+        self.console.print(f"   Endpoint: {self.zai_base_url}")
+        
+        # Show updated config preview
+        self.console.print(self._create_config_preview())
     
     def _get_best_provider(self) -> Optional[str]:
         """Choose the best available provider."""
