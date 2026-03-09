@@ -58,6 +58,7 @@ class ProviderDetector:
             results["ollama"] = await self._check_ollama()
             results["openai"] = await self._check_openai()
             results["openrouter"] = await self._check_openrouter()
+            results["zai"] = await self._check_zai()
             return results
     
     async def _detect_with_progress(self) -> Dict[str, any]:
@@ -69,7 +70,7 @@ class ProviderDetector:
             transient=True,
         ) as progress:
             
-            task = progress.add_task("🔍 Detecting AI providers...", total=4)
+            task = progress.add_task("🔍 Detecting AI providers...", total=5)
             
             results = {}
             
@@ -88,7 +89,12 @@ class ProviderDetector:
             results["openrouter"] = await self._check_openrouter()
             progress.advance(task)
             
-            progress.update(task, description="✅ Detection complete!", completed=4)
+            # Check z.ai
+            progress.update(task, description="🔍 Checking z.ai...")
+            results["zai"] = await self._check_zai()
+            progress.advance(task)
+            
+            progress.update(task, description="✅ Detection complete!", completed=5)
             
         return results
     
@@ -281,6 +287,32 @@ class ProviderDetector:
             "models": models,
             "error": None
         }
+    
+    async def _check_zai(self) -> Dict:
+        """Check z.ai / Zhipu AI API key."""
+        api_key = os.environ.get("Z_AI_API_KEY")
+        if not api_key:
+            return {
+                "available": False,
+                "models": [],
+                "error": "No Z_AI_API_KEY found in environment"
+            }
+        
+        # GLM models available on z.ai
+        models = [
+            {"name": "glm-z1-airx", "display_name": "GLM Z1 AirX", "tag": "Fastest", "recommended": True},
+            {"name": "glm-z1-air", "display_name": "GLM Z1 Air", "tag": "Fast"},
+            {"name": "glm-z1-flash", "display_name": "GLM Z1 Flash", "tag": "Balanced"},
+            {"name": "glm-4.5", "display_name": "GLM 4.5", "tag": "Flagship"},
+            {"name": "glm-4-plus", "display_name": "GLM 4 Plus", "tag": "Enhanced"},
+            {"name": "glm-4-flash", "display_name": "GLM 4 Flash", "tag": "Quick"},
+        ]
+        
+        return {
+            "available": True,
+            "models": models,
+            "error": None
+        }
 
 
 class HermitClawTUI:
@@ -341,6 +373,13 @@ class HermitClawTUI:
         else:
             table.add_row("❌", "OpenRouter: No API key")
         
+        # z.ai status
+        zai = self.providers.get("zai") or {}
+        if zai.get("available"):
+            table.add_row("✅", f"z.ai ready ({len(zai['models'])} models)")
+        else:
+            table.add_row("❌", "z.ai: No API key")
+        
         return Panel(table, title="🔍 Detection Results", box=box.ROUNDED, border_style="cyan")
     
     def _create_provider_selection(self) -> Panel:
@@ -371,6 +410,13 @@ class HermitClawTUI:
         openrouter_models = f"{len(openrouter.get('models', []))} available" if openrouter.get("available") else "N/A"
         openrouter_action = "Configure" if openrouter.get("available") else "Set API key"
         table.add_row("🌐 OpenRouter", openrouter_status, openrouter_models, openrouter_action)
+        
+        # z.ai / Zhipu AI
+        zai = self.providers.get("zai") or {}
+        zai_status = "✅ Ready" if zai.get("available") else "🔑 Key needed"
+        zai_models = f"{len(zai.get('models', []))} available" if zai.get("available") else "N/A"
+        zai_action = "Configure" if zai.get("available") else "Set API key"
+        table.add_row("🤖 z.ai (Zhipu)", zai_status, zai_models, zai_action)
         
         table.add_row("⚙️ Custom URL", "💪 Advanced", "Manual setup", "Configure")
         
@@ -486,6 +532,12 @@ api_key: 'sk-•••••••••••••••••'  # Set via OPE
 model: '{self.selected_model}'
 api_key: 'sk-or-•••••••••••••••••'  # Set via OPENROUTER_API_KEY
 # base_url: null"""
+        elif self.selected_provider == "zai":
+            config_text = f"""provider: 'custom'
+model: '{self.selected_model}'
+base_url: 'https://api.z.ai/api/paas/v4'  # or /api/coding/paas/v4
+api_key: '••••••••••••••••••••'  # Set via Z_AI_API_KEY
+# embedding_model: 'embedding-3'"""
         else:
             config_text = "# Custom configuration - fill in your details"
         
@@ -571,8 +623,8 @@ api_key: 'sk-or-•••••••••••••••••'  # Set via 
     
     def _get_best_provider(self) -> Optional[str]:
         """Choose the best available provider."""
-        # Priority: Ollama > OpenAI > OpenRouter
-        for provider in ["ollama", "openai", "openrouter"]:
+        # Priority: Ollama > OpenAI > OpenRouter > z.ai
+        for provider in ["ollama", "openai", "openrouter", "zai"]:
             if self.providers.get(provider, {}).get("available"):
                 return provider
         return None
