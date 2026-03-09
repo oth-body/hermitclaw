@@ -1,8 +1,8 @@
 # HermitClaw Configuration
-provider: "openai"              # "openai" | "openrouter" | "bedrock" | "custom"
-model: "gpt-4.1"
+provider: "custom"
+model: "glm-4-air"
 api_key: null                   # set here or via OPENAI_API_KEY / OPENROUTER_API_KEY env var
-base_url: null                  # auto-set for known providers; required for "custom"
+base_url: "https://api.z.ai/api/coding/paas/v4"
 
 # Bedrock configuration (optional, for bedrock provider)
 # aws_region: "us-east-1"       # AWS region (default: us-east-1)
@@ -21,18 +21,6 @@ embedding_model: "text-embedding-3-small"  # for Ollama use: nomic-embed-text
 recency_decay_rate: 0.995      # exponential decay rate for recency scoring
 
 # Web search provider (optional)
-# web_search:
-#   provider: "ollama"          # "ollama" | "searxng" | "brave" | "custom"
-#   searxng_url: "http://localhost:8080"    # for searxng provider
-#   brave_api_key: null                      # for brave provider
-#   custom_url: null                         # for custom provider
-#   custom_headers: {}                       # extra headers for custom provider
-
-# Memory retention policy (optional)
-# memory_max_entries: 1000     # keep max N memories
-# memory_max_age_days: 30      # delete memories older than N days
-# memory_min_importance: 3     # delete memories below importance threshold
-# memory_prune_on_startup: true # run cleanup on startup
-
-# environment_path is auto-detected from *_box/ directories
-# Uncomment to override: environment_path: "./mybox"
+web_search:
+  provider: "searxng"
+  searxng_url: "http://localhost:9091/"

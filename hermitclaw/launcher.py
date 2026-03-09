@@ -435,27 +435,41 @@ def write_web_search_config(provider, searxng_url=None):
     # Read existing config
     if config_path.exists():
         with open(config_path, "r") as f:
-            content = f.read()
+            lines = f.readlines()
     else:
-        content = ""
+        lines = []
     
-    # Build web_search section
-    web_search_yaml = f'\nweb_search:\n  provider: "{provider}"\n'
+    # Build web_search lines
+    web_search_lines = [
+        "web_search:\n",
+        f'  provider: "{provider}"\n'
+    ]
     if searxng_url:
-        web_search_yaml += f'  searxng_url: "{searxng_url}"\n'
+        web_search_lines.append(f'  searxng_url: "{searxng_url}"\n')
     
-    # Check if web_search section exists
-    if "web_search:" in content:
-        # Replace existing web_search section
-        import re
-        pattern = r'web_search:.*?(?=\n\w|\Z)'
-        content = re.sub(pattern, web_search_yaml.strip(), content, flags=re.DOTALL)
-    else:
-        # Append web_search section
-        content = content.rstrip() + "\n" + web_search_yaml
+    # Find and remove existing web_search section
+    new_lines = []
+    in_web_search = False
+    for line in lines:
+        if line.strip().startswith("web_search:"):
+            in_web_search = True
+            continue
+        if in_web_search:
+            # Skip indented lines under web_search
+            if line.startswith("  ") or line.startswith("\t"):
+                continue
+            else:
+                in_web_search = False
+        
+        if not in_web_search:
+            new_lines.append(line)
+    
+    # Append new web_search section
+    new_lines.append("\n")
+    new_lines.extend(web_search_lines)
     
     with open(config_path, "w") as f:
-        f.write(content)
+        f.writelines(new_lines)
 
 
 if __name__ == "__main__":
