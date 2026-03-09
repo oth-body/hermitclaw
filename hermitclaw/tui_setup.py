@@ -572,7 +572,7 @@ class HermitClawTUI:
                 Text("Select a provider and model first", style="dim"),
                 title="📝 Config Preview",
                 box=box.ROUNDED,
-                border_style="gray"
+                border_style="bright_black"
             )
         
         if self.selected_provider == "ollama":
@@ -672,7 +672,7 @@ api_key: '••••••••••••••••••••'  # Set v
             Text(help_text, style="dim"),
             title="💡 Help",
             box=box.ROUNDED,
-            border_style="gray"
+            border_style="bright_black"
         ))
         
         # Display the interface
