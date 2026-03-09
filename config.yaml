@@ -13,7 +13,8 @@ max_thoughts_in_context: 4
 # Memory stream settings
 reflection_threshold: 50
 memory_retrieval_count: 3
-embedding_model: "text-embedding-3-small"
+# embedding_model: "text-embedding-3-small"  # OpenAI - not compatible with z.ai
+embedding_model: "embedding-3"  # z.ai embedding model
 recency_decay_rate: 0.995
 
 # Web search provider
